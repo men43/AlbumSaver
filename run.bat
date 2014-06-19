@@ -1,3 +1,3 @@
 @ECHO OFF
-python photoSaver.py
+python script.py
 PAUSE
