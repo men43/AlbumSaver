@@ -121,7 +121,13 @@ def run():
 		if "error" not in decodedJsonData:
 			os.mkdir(options.DATA_LOCATION+"/"+str(albumFolder))
 			for w in range(0,len(decodedJsonData["response"])):
-				utils.downloadImage(decodedJsonData["response"][w]["src_big"], options.DATA_LOCATION+"/"+str(albumFolder)+"/"+str(w+1)+".jpg")
+				if "src_xxbig" in decodedJsonData["response"][w]:
+					imageUrl = decodedJsonData["response"][w]["src_xxbig"]
+				elif "src_xbig" in decodedJsonData["response"][w]:
+					imageUrl = decodedJsonData["response"][w]["src_xbig"]
+				else:
+					imageUrl = decodedJsonData["response"][w]["src_big"]
+				utils.downloadImage(imageUrl, options.DATA_LOCATION+"/"+str(albumFolder)+"/"+str(w+1)+".jpg")
 			utils.outputMessage(20, "Finished "+str(albumFolder)+" album, downloaded "+str(len(decodedJsonData["response"]))+" photos.")
 		else:
 			utils.outputMessage(50, "API error: "+decodedJsonData["error"]["error_msg"]+". Terminating.")
