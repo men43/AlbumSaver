@@ -54,7 +54,7 @@ class utils(object):
 		return False #TODO
 	def apiGet(method, params):
 		request = urllib.request.Request("https://api.vk.com/method/"+method+"?"+params+"&access_token="+options.ACCESS_TOKEN)
-		return urllib.request.urlopen(request).read().decode(SYSTEM_ENCODING)
+		return urllib.request.urlopen(request).read().decode(options.SYSTEM_ENCODING)
 	def downloadImage(url, filename):
 		request = urllib.request.Request(url)
 		image = urllib.request.urlopen(request)
@@ -119,7 +119,7 @@ def run():
 			sys.exit()
 		decodedJsonData = json.loads(rawAlbumData)
 		decodedJsonName = json.loads(rawAlbumName)
-		if options.USE_TOKEN != 0: albumFolder = decodedJsonName["response"][0]["title"].encode(SYSTEM_ENCODING).decode('utf-8') #last two methods are redundant in some cases 
+		if options.USE_TOKEN != 0: albumFolder = decodedJsonName["response"][0]["title"].encode(options.SYSTEM_ENCODING).decode('utf-8') #last two methods are redundant in some cases 
 		if options.USE_TOKEN == 0: 
 			albumFolder = i+1
 		if "error" not in decodedJsonData:
