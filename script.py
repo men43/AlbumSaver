@@ -63,7 +63,7 @@ class utils(object):
 		writeable.close()
 		return
 	def systemEncoding():
-		return "cp1251" if sys.platform != "win32" or platform.release() == "8" else "utf8"	#extremely bad but working solution
+		return "cp1251" if sys.platform != "win32" or platform.release() != "8" else "utf8"	#extremely bad but working solution
 
 class options(object):
 	SCRIPT_LOCATION = utils.getScriptFolder()
