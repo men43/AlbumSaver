@@ -1,4 +1,4 @@
-import time,os,sys,configparser,urllib.request,json,logging
+import time,os,sys,configparser,urllib.request,json,logging,platform
 
 class utils(object):
 	def getScriptFolder():
@@ -54,7 +54,7 @@ class utils(object):
 		return False #TODO
 	def apiGet(method, params):
 		request = urllib.request.Request("https://api.vk.com/method/"+method+"?"+params+"&access_token="+options.ACCESS_TOKEN)
-		return urllib.request.urlopen(request).read().decode('cp1251')
+		return urllib.request.urlopen(request).read().decode(SYSTEM_ENCODING)
 	def downloadImage(url, filename):
 		request = urllib.request.Request(url)
 		image = urllib.request.urlopen(request)
@@ -62,6 +62,8 @@ class utils(object):
 		writeable.write(image.read())
 		writeable.close()
 		return
+	def systemEncoding():
+		return "cp1251" if sys.platform != "win32" or platform.release() == "8" else "utf8"	#extremely bad but working solution
 
 class options(object):
 	SCRIPT_LOCATION = utils.getScriptFolder()
@@ -73,11 +75,13 @@ class options(object):
 	OUTPUT_LOG = 1
 	ACCESS_TOKEN = ""
 	USE_TOKEN = 1
+	SYSTEM_ENCODING = utils.systemEncoding()
+	
 	
 def startup():
 	utils.initLogging()
 	if os.path.exists(options.CONFIG_FILE):
-		utils.outputMessage(20, "Config file is present, reading.")
+		utils.outputMessage(20, "Config file is presented, reading.")
 		utils.readConfig(options.CONFIG_FILE)
 	else:
 		utils.outputMessage(20, "No config file detected, creating one.")
@@ -115,7 +119,7 @@ def run():
 			sys.exit()
 		decodedJsonData = json.loads(rawAlbumData)
 		decodedJsonName = json.loads(rawAlbumName)
-		if options.USE_TOKEN != 0: albumFolder = decodedJsonName["response"][0]["title"].encode('cp1251').decode('utf-8')
+		if options.USE_TOKEN != 0: albumFolder = decodedJsonName["response"][0]["title"].encode(SYSTEM_ENCODING).decode('utf-8') #last two methods are redundant in some cases 
 		if options.USE_TOKEN == 0: 
 			albumFolder = i+1
 		if "error" not in decodedJsonData:
