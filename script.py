@@ -7,11 +7,11 @@ class utils(object):
 		format = logging.Formatter("[%(asctime)s][%(levelname)s] %(message)s", "%d-%m-%y, %H:%M:%S")
 		logger = logging.getLogger("root")
 		logger.setLevel(20)
-		if options.OUTPUT_LOG != 0:
-			fileHandler = logging.FileHandler(options.LOG_FILE)
+		if options.preset["OUTPUT"]["OUTPUT_LOG"] != 0:
+			fileHandler = logging.FileHandler(options.preset["SETUP"]["LOG_FILE"])
 			fileHandler.setFormatter(format)
 			logger.addHandler(fileHandler)
-		if options.OUTPUT_CONSOLE != 0:
+		if options.preset["OUTPUT"]["OUTPUT_CONSOLE"] != 0:
 			consoleHandler = logging.StreamHandler()
 			consoleHandler.setFormatter(format)
 			logger.addHandler(consoleHandler)
@@ -20,41 +20,33 @@ class utils(object):
 		output = logging.getLogger("root")
 		output.log(logLevel, message)
 		return
-	def createConfig(filename):
+	def createConfig():
 		config = configparser.ConfigParser()
-		config["setup"] = {"script_location": options.SCRIPT_LOCATION, "data_location": options.DATA_LOCATION,
-		"links_file": options.LINKS_FILE, "config_file": options.CONFIG_FILE, "log_file": options.LOG_FILE}
-		config["output"] = {"output_console": options.OUTPUT_CONSOLE, "output_log": options.OUTPUT_LOG}
-		config["token"] = {"access_token": options.ACCESS_TOKEN, "use_token": options.USE_TOKEN}
-		with open(filename, 'w+') as configfile:
+		for section in options.preset.keys():
+			config.add_section(section)
+			for key in options.preset[section].keys():
+				config.set(section, key, str(options.preset[section][key]))
+		with open(options.preset["SETUP"]["CONFIG_FILE"], 'w+') as configfile:
 			config.write(configfile)
 		return
-	def readConfig(filename):
+	def readConfig():
 		config = configparser.ConfigParser()
-		config.read(filename)
-		if "setup" in config:
-			setup = config["setup"]
-			options.SCRIPT_LOCATION = setup["script_location"]
-			options.DATA_LOCATION = setup["data_location"]
-			options.LINKS_FILE = setup["links_file"]
-			options.CONFIG_FILE = setup["config_file"]
-			options.LOG_FILE = setup["log_file"]
-		if "output" in config:
-			output = config["output"]
-			options.OUTPUT_CONSOLE = output["output_console"]
-			options.OUTPUT_LOG = output["output_log"]
-		if "token" in config:
-			token = config["token"]
-			options.ACCESS_TOKEN = token["access_token"]
-			options.USE_TOKEN = token["use_token"]
+		config.read(options.preset["SETUP"]["CONFIG_FILE"])
+		rs = {}
+		for opt in config:
+			for n, key in enumerate(config[opt].keys()):
+				rem = list(config[opt].values())
+				rs[(opt, key)] = rem[n]
+		for section in rs.keys():
+			options.preset[section[0]][section[1]] = rs[(section[0],section[1])]
 		return
 	def checkAccessToken(accessToken):
 		return False #TODO
 	def authorize(username, password):
 		return False #TODO
 	def apiGet(method, params):
-		request = urllib.request.Request("https://api.vk.com/method/"+method+"?"+params+"&access_token="+options.ACCESS_TOKEN)
-		return urllib.request.urlopen(request).read().decode(options.SYSTEM_ENCODING)
+		request = urllib.request.Request("https://api.vk.com/method/"+method+"?"+params+"&access_token="+options.preset["AUTHORIZATION"]["ACCESS_TOKEN"])
+		return urllib.request.urlopen(request).read().decode(options.preset["SETUP"]["SYSTEM_ENCODING"])
 	def downloadImage(url, filename):
 		request = urllib.request.Request(url)
 		image = urllib.request.urlopen(request)
@@ -66,39 +58,41 @@ class utils(object):
 		return "cp1251" if sys.platform != "win32" or platform.release() != "8" else "utf8"	#extremely bad but working solution
 
 class options(object):
-	SCRIPT_LOCATION = utils.getScriptFolder()
-	DATA_LOCATION = "res"
-	LINKS_FILE = "links.txt"
-	CONFIG_FILE = "config.ini"
-	LOG_FILE = "dump.log"
-	OUTPUT_CONSOLE = 1
-	OUTPUT_LOG = 1
-	ACCESS_TOKEN = ""
-	USE_TOKEN = 1
-	SYSTEM_ENCODING = utils.systemEncoding()
-	
-	
+	preset = {
+	"SETUP": {
+		"SCRIPT_LOCATION":os.path.dirname(os.path.realpath(sys.argv[0])) + "\\",
+		"SYSTEM_ENCODING":utils.systemEncoding(),
+		"DATA_LOCATION":"res",
+		"LINKS_FILE":"links.txt",
+		"CONFIG_FILE":"config.ini", #NOT(!) IN CONFIG 
+		"LOG_FILE":"dump.log",
+	},"OUTPUT": {
+		"OUTPUT_CONSOLE":1,
+		"OUTPUT_LOG":1,
+	},"AUTHORIZATION": {
+		"ACCESS_TOKEN":"0",
+		"USE_TOKEN":0
+	}}
+
 def startup():
-	utils.initLogging()
-	if os.path.exists(options.CONFIG_FILE):
-		utils.outputMessage(20, "Config file is presented, reading.")
-		utils.readConfig(options.CONFIG_FILE)
+	if os.path.exists(options.preset["SETUP"]["CONFIG_FILE"]):
+		cfg = utils.readConfig()
 	else:
-		utils.outputMessage(20, "No config file detected, creating one.")
-		utils.createConfig(options.CONFIG_FILE)
-	if options.ACCESS_TOKEN.strip() == "":
+		utils.createConfig()
+	utils.initLogging()
+	if options.preset["AUTHORIZATION"]["ACCESS_TOKEN"].strip() == "":
 		utils.outputMessage(30, "Can't find your access token, you can input it manually.")
 		accessToken = input("Token (press ENTER for non-token mode): ")
 		if accessToken.strip() == "":
 			utils.outputMessage(20, "Non-token mode enabled.")
-			options.ACCESS_TOKEN = ""
-			options.USE_TOKEN = 0
+			options.preset["AUTHORIZATION"]["ACCESS_TOKEN"] = ""
+			options.preset["AUTHORIZATION"]["USE_TOKEN"] = 0
 		else: 
-			options.ACCESS_TOKEN = accessToken
-	if os.path.exists(options.SCRIPT_LOCATION+options.DATA_LOCATION) != True:
+			options.preset["AUTHORIZATION"]["ACCESS_TOKEN"] = accessToken
+	if os.path.exists(options.preset["SETUP"]["SCRIPT_LOCATION"]+options.preset["SETUP"]["DATA_LOCATION"]) != True:
 		utils.outputMessage(20, "Can't find data folder, creating.")
-		os.mkdir(options.SCRIPT_LOCATION+options.DATA_LOCATION)
-	if os.path.exists(options.LINKS_FILE):
+		os.mkdir(options.preset["SETUP"]["SCRIPT_LOCATION"]+options.preset["SETUP"]["DATA_LOCATION"])
+	if os.path.exists(options.preset["SETUP"]["LINKS_FILE"]):
 		utils.outputMessage(20, "Links file is present, reading.")
 	else:
 		utils.outputMessage(50, "Can't find links file. Terminating.")
@@ -107,7 +101,7 @@ def startup():
 
 def run():
 	startup()
-	lines = open(options.LINKS_FILE, 'r').readlines()
+	lines = open(options.preset["SETUP"]["LINKS_FILE"], 'r').readlines()
 	for i in range(0, len(lines)):
 		raw = lines[i].split("album")
 		full = raw[1].split("_")
@@ -119,11 +113,11 @@ def run():
 			sys.exit()
 		decodedJsonData = json.loads(rawAlbumData)
 		decodedJsonName = json.loads(rawAlbumName)
-		if options.USE_TOKEN != 0: albumFolder = decodedJsonName["response"][0]["title"].encode(options.SYSTEM_ENCODING).decode('utf-8') #last two methods are redundant in some cases 
-		if options.USE_TOKEN == 0: 
+		if options.preset["AUTHORIZATION"]["USE_TOKEN"] != 0: albumFolder = decodedJsonName["response"][0]["title"].encode(options.preset["SETUP"]["SYSTEM_ENCODING"]).decode('utf-8') #last two methods are redundant in some cases 
+		if options.preset["AUTHORIZATION"]["USE_TOKEN"] == 0: 
 			albumFolder = i+1
 		if "error" not in decodedJsonData:
-			os.mkdir(options.DATA_LOCATION+"/"+str(albumFolder))
+			os.mkdir(options.preset["SETUP"]["DATA_LOCATION"]+"/"+str(albumFolder))
 			for w in range(0,len(decodedJsonData["response"])):
 				if "src_xxbig" in decodedJsonData["response"][w]:
 					imageUrl = decodedJsonData["response"][w]["src_xxbig"]
@@ -131,7 +125,7 @@ def run():
 					imageUrl = decodedJsonData["response"][w]["src_xbig"]
 				else:
 					imageUrl = decodedJsonData["response"][w]["src_big"]
-				utils.downloadImage(imageUrl, options.DATA_LOCATION+"/"+str(albumFolder)+"/"+str(w+1)+".jpg")
+				utils.downloadImage(imageUrl, options.preset["SETUP"]["DATA_LOCATION"]+"/"+str(albumFolder)+"/"+str(w+1)+".jpg")
 			utils.outputMessage(20, "Finished "+str(albumFolder)+" album, downloaded "+str(len(decodedJsonData["response"]))+" photos.")
 		else:
 			utils.outputMessage(50, "API error: "+decodedJsonData["error"]["error_msg"]+". Terminating.")
