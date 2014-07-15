@@ -50,6 +50,17 @@ class utils(object):
 		return
 	def systemEncoding():
 		return "cp1251" if sys.platform != "win32" or platform.release() != "8" else "utf8"	#extremely bad but working solution
+	def checkVersion():
+		try:
+			request = urllib.request.Request("https://raw.githubusercontent.com/men43/AlbumSaver/version")
+			latest = urllib.request.urlopen(request).read().decode("utf8")
+		except:
+			latest = 0
+		if str(latest) > options.preset["SETUP"]["script_version"]:
+			utils.outputMessage(30, "Your script is out of date. Get a new version here: https://github.com/men43/AlbumSaver")
+		elif latest == 0:
+			utils.outputMessage(40, "Can't check current version.")
+		return
 
 class options(object):
 	preset = {
@@ -77,6 +88,7 @@ def startup():
 	else:
 		utils.createConfig()
 	utils.initLogging()
+	utils.checkVersion()
 	if options.preset["AUTHORIZATION"]["access_token"].strip() == "":
 		utils.outputMessage(30, "Can't find your access token, you can input it manually.")
 		accessToken = input("Token (press ENTER for non-token mode): ")
@@ -148,5 +160,4 @@ def run():
 	for n,i in enumerate(links):
 		downloadAlbum(i.rstrip("\n"),n)
 	return
-
 run()
