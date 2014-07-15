@@ -52,7 +52,7 @@ class utils(object):
 		return "cp1251" if sys.platform != "win32" or platform.release() != "8" else "utf8"	#extremely bad but working solution
 	def checkVersion():
 		try:
-			request = urllib.request.Request("https://raw.githubusercontent.com/men43/AlbumSaver/version")
+			request = urllib.request.Request("https://raw.githubusercontent.com/men43/AlbumSaver/master/version")
 			latest = urllib.request.urlopen(request).read().decode("utf8")
 		except:
 			latest = 0
