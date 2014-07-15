@@ -1,17 +1,15 @@
 import time,os,sys,configparser,urllib.request,json,logging,platform
 
 class utils(object):
-	def getScriptFolder():
-		return os.path.dirname(os.path.realpath(sys.argv[0])) + "\\"
 	def initLogging():
 		format = logging.Formatter("[%(asctime)s][%(levelname)s] %(message)s", "%d-%m-%y, %H:%M:%S")
 		logger = logging.getLogger("root")
 		logger.setLevel(20)
-		if options.OUTPUT_LOG != 0:
-			fileHandler = logging.FileHandler(options.LOG_FILE)
+		if options.preset["OUTPUT"]["output_log"] != 0:
+			fileHandler = logging.FileHandler(options.preset["SETUP"]["log_file"])
 			fileHandler.setFormatter(format)
 			logger.addHandler(fileHandler)
-		if options.OUTPUT_CONSOLE != 0:
+		if options.preset["OUTPUT"]["output_console"] != 0:
 			consoleHandler = logging.StreamHandler()
 			consoleHandler.setFormatter(format)
 			logger.addHandler(consoleHandler)
@@ -20,41 +18,29 @@ class utils(object):
 		output = logging.getLogger("root")
 		output.log(logLevel, message)
 		return
-	def createConfig(filename):
+	def createConfig():
 		config = configparser.ConfigParser()
-		config["setup"] = {"script_location": options.SCRIPT_LOCATION, "data_location": options.DATA_LOCATION,
-		"links_file": options.LINKS_FILE, "config_file": options.CONFIG_FILE, "log_file": options.LOG_FILE}
-		config["output"] = {"output_console": options.OUTPUT_CONSOLE, "output_log": options.OUTPUT_LOG}
-		config["token"] = {"access_token": options.ACCESS_TOKEN, "use_token": options.USE_TOKEN}
-		with open(filename, 'w+') as configfile:
+		for section in options.preset.keys():
+			config.add_section(section)
+			for key in options.preset[section].keys():
+				config.set(section, key, str(options.preset[section][key]))
+		with open(options.preset["SETUP"]["config_file"], 'w+') as configfile:
 			config.write(configfile)
 		return
-	def readConfig(filename):
+	def readConfig():
 		config = configparser.ConfigParser()
-		config.read(filename)
-		if "setup" in config:
-			setup = config["setup"]
-			options.SCRIPT_LOCATION = setup["script_location"]
-			options.DATA_LOCATION = setup["data_location"]
-			options.LINKS_FILE = setup["links_file"]
-			options.CONFIG_FILE = setup["config_file"]
-			options.LOG_FILE = setup["log_file"]
-		if "output" in config:
-			output = config["output"]
-			options.OUTPUT_CONSOLE = output["output_console"]
-			options.OUTPUT_LOG = output["output_log"]
-		if "token" in config:
-			token = config["token"]
-			options.ACCESS_TOKEN = token["access_token"]
-			options.USE_TOKEN = token["use_token"]
+		config.read(options.preset["SETUP"]["config_file"])
+		rs = {}
+		for opt in config:
+			for n, key in enumerate(config[opt].keys()):
+				rem = list(config[opt].values())
+				rs[(opt, key)] = rem[n]
+		for section in rs.keys():
+			options.preset[section[0]][section[1]] = rs[(section[0],section[1])]
 		return
-	def checkAccessToken(accessToken):
-		return False #TODO
-	def authorize(username, password):
-		return False #TODO
 	def apiGet(method, params):
-		request = urllib.request.Request("https://api.vk.com/method/"+method+"?"+params+"&access_token="+options.ACCESS_TOKEN)
-		return urllib.request.urlopen(request).read().decode(options.SYSTEM_ENCODING)
+		request = urllib.request.Request("https://api.vk.com/method/"+method+"?"+params+"&rev="+options.preset["SETUP"]["photo_sorting"]+"&v="+options.preset["SETUP"]["api_version"])
+		return urllib.request.urlopen(request).read().decode("utf8")
 	def downloadImage(url, filename):
 		request = urllib.request.Request(url)
 		image = urllib.request.urlopen(request)
@@ -64,78 +50,114 @@ class utils(object):
 		return
 	def systemEncoding():
 		return "cp1251" if sys.platform != "win32" or platform.release() != "8" else "utf8"	#extremely bad but working solution
+	def checkVersion():
+		try:
+			request = urllib.request.Request("https://raw.githubusercontent.com/men43/AlbumSaver/version")
+			latest = urllib.request.urlopen(request).read().decode("utf8")
+		except:
+			latest = 0
+		if str(latest) > options.preset["SETUP"]["script_version"]:
+			utils.outputMessage(30, "Your script is out of date. Get a new version here: https://github.com/men43/AlbumSaver")
+		elif latest == 0:
+			utils.outputMessage(40, "Can't check current version.")
+		return
 
 class options(object):
-	SCRIPT_LOCATION = utils.getScriptFolder()
-	DATA_LOCATION = "res"
-	LINKS_FILE = "links.txt"
-	CONFIG_FILE = "config.ini"
-	LOG_FILE = "dump.log"
-	OUTPUT_CONSOLE = 1
-	OUTPUT_LOG = 1
-	ACCESS_TOKEN = ""
-	USE_TOKEN = 1
-	SYSTEM_ENCODING = utils.systemEncoding()
-	
-	
+	preset = {
+	"SETUP": {
+		"script_location":os.path.dirname(os.path.realpath(sys.argv[0])) + "\\",
+		"system_encoding":utils.systemEncoding(),
+		"data_location":"res",
+		"links_file":"links.txt",
+		"config_file":"config.ini", #NOT(!) IN CONFIG 
+		"log_file":"dump.log",
+		"script_version":"0.5",
+		"api_version":"5.23",
+		"photo_sorting":"0",
+	},"OUTPUT": {
+		"output_log":1,
+		"output_console":1,
+	},"AUTHORIZATION": {
+		"access_token":"",
+		"use_token":0
+	}}
+
 def startup():
-	utils.initLogging()
-	if os.path.exists(options.CONFIG_FILE):
-		utils.outputMessage(20, "Config file is presented, reading.")
-		utils.readConfig(options.CONFIG_FILE)
+	if os.path.exists(options.preset["SETUP"]["config_file"]):
+		cfg = utils.readConfig()
 	else:
-		utils.outputMessage(20, "No config file detected, creating one.")
-		utils.createConfig(options.CONFIG_FILE)
-	if options.ACCESS_TOKEN.strip() == "":
+		utils.createConfig()
+	utils.initLogging()
+	utils.checkVersion()
+	if options.preset["AUTHORIZATION"]["access_token"].strip() == "":
 		utils.outputMessage(30, "Can't find your access token, you can input it manually.")
 		accessToken = input("Token (press ENTER for non-token mode): ")
 		if accessToken.strip() == "":
 			utils.outputMessage(20, "Non-token mode enabled.")
-			options.ACCESS_TOKEN = ""
-			options.USE_TOKEN = 0
+			options.preset["AUTHORIZATION"]["access_token"] = ""
+			options.preset["AUTHORIZATION"]["use_token"] = 0
 		else: 
-			options.ACCESS_TOKEN = accessToken
-	if os.path.exists(options.SCRIPT_LOCATION+options.DATA_LOCATION) != True:
+			options.preset["AUTHORIZATION"]["access_token"] = accessToken
+	if os.path.exists(options.preset["SETUP"]["script_location"]+options.preset["SETUP"]["data_location"]) != True:
 		utils.outputMessage(20, "Can't find data folder, creating.")
-		os.mkdir(options.SCRIPT_LOCATION+options.DATA_LOCATION)
-	if os.path.exists(options.LINKS_FILE):
+		os.mkdir(options.preset["SETUP"]["script_location"]+options.preset["SETUP"]["data_location"])
+	if os.path.exists(options.preset["SETUP"]["links_file"]):
 		utils.outputMessage(20, "Links file is present, reading.")
 	else:
 		utils.outputMessage(50, "Can't find links file. Terminating.")
 		sys.exit()
+	return open(options.preset["SETUP"]["links_file"], 'r').readlines()
+
+def downloadAlbum(link,i):
+	raw = link.split("album")
+	full = raw[1].split("_")
+	apiRequest = "owner_id="+str(full[0])
+	specical = 0
+	if full[1] == "0":
+		apiRequest += "&album_id=profile"
+		specical = "profile"
+	elif full[1] == "00":
+		apiRequest += "&album_id=wall"
+		specical = "wall"
+	elif full[1] == "000":
+		apiRequest += "&album_id=saved"
+		specical = "saved"
+	else:
+		apiRequest += "&album_id="+str(full[1])
+	try:
+		rawAlbumData = utils.apiGet("photos.get", apiRequest)
+		rawAlbumName = utils.apiGet("photos.getAlbums", "owner_id="+str(full[0])+"&album_ids="+str(full[1]))
+	except:
+		utils.outputMessage(50, "Can't connect to VK API. Check your internet connection. Terminating.")
+		sys.exit()
+	decodedData = [json.loads(rawAlbumData), json.loads(rawAlbumName)]
+	if options.preset["AUTHORIZATION"]["use_token"] != 0 and specical == 0: albumFolder = decodedData[1]["response"]["items"][0]["title"]
+	elif options.preset["AUTHORIZATION"]["use_token"] == 0 and specical == 0: albumFolder = i
+	elif specical != 0: albumFolder = str(full[0])+"_"+specical
+	if "error" not in decodedData[0]:
+		os.mkdir(options.preset["SETUP"]["data_location"]+"/"+str(albumFolder))
+		for w in range(0,decodedData[0]["response"]["count"]):
+			if "photo_2560" in decodedData[0]["response"]["items"][w]:
+				imageUrl = decodedData[0]["response"]["items"][w]["photo_2560"]
+			elif "photo_1280" in decodedData[0]["response"]["items"][w]:
+				imageUrl = decodedData[0]["response"]["items"][w]["photo_1280"]
+			elif "photo_807" in decodedData[0]["response"]["items"][w]:
+				imageUrl = decodedData[0]["response"]["items"][w]["photo_807"]
+			else:
+				imageUrl = decodedData[0]["response"]["items"][w]["photo_604"]
+			utils.downloadImage(imageUrl, options.preset["SETUP"]["data_location"]+"/"+str(albumFolder)+"/"+str(w+1)+".jpg")
+		utils.outputMessage(20, "Finished "+str(albumFolder)+" album, downloaded "+str(decodedData[0]["response"]["count"])+" photos.")
+	else:
+		utils.outputMessage(50, "API error: "+decodedData[0]["error"]["error_msg"]+". Terminating.")
+		sys.exit()
 	return
 
 def run():
-	startup()
-	lines = open(options.LINKS_FILE, 'r').readlines()
-	for i in range(0, len(lines)):
-		raw = lines[i].split("album")
-		full = raw[1].split("_")
-		try:
-			rawAlbumData = utils.apiGet("photos.get", "owner_id="+full[0]+"?&album_id="+full[1].rstrip("\n"))
-			rawAlbumName = utils.apiGet("photos.getAlbums", "owner_id="+full[0]+"?&album_ids="+full[1].rstrip("\n"))
-		except:
-			utils.outputMessage(50, "Can't connect to VK API. Check your internet connection. Terminating.")
-			sys.exit()
-		decodedJsonData = json.loads(rawAlbumData)
-		decodedJsonName = json.loads(rawAlbumName)
-		if options.USE_TOKEN != 0: albumFolder = decodedJsonName["response"][0]["title"].encode(options.SYSTEM_ENCODING).decode('utf-8') #last two methods are redundant in some cases 
-		if options.USE_TOKEN == 0: 
-			albumFolder = i+1
-		if "error" not in decodedJsonData:
-			os.mkdir(options.DATA_LOCATION+"/"+str(albumFolder))
-			for w in range(0,len(decodedJsonData["response"])):
-				if "src_xxbig" in decodedJsonData["response"][w]:
-					imageUrl = decodedJsonData["response"][w]["src_xxbig"]
-				elif "src_xbig" in decodedJsonData["response"][w]:
-					imageUrl = decodedJsonData["response"][w]["src_xbig"]
-				else:
-					imageUrl = decodedJsonData["response"][w]["src_big"]
-				utils.downloadImage(imageUrl, options.DATA_LOCATION+"/"+str(albumFolder)+"/"+str(w+1)+".jpg")
-			utils.outputMessage(20, "Finished "+str(albumFolder)+" album, downloaded "+str(len(decodedJsonData["response"]))+" photos.")
-		else:
-			utils.outputMessage(50, "API error: "+decodedJsonData["error"]["error_msg"]+". Terminating.")
-			sys.exit()
-	utils.outputMessage(20, "Finished all albums, terminating.")
+	links = startup()
+	if len(links) == 0:
+		utils.outputMessage(50, "Links file is empty, terminating.")
+		sys.exit()
+	for n,i in enumerate(links):
+		downloadAlbum(i.rstrip("\n"),n)
 	return
 run()
