@@ -74,7 +74,7 @@ class options(object):
 		"links_file":"links.txt",
 		"config_file":"config.ini", #NOT(!) IN CONFIG 
 		"log_file":"dump.log",
-		"script_version":"0.5",
+		"script_version":"0.6",
 		"api_version":"5.23",
 		"photo_sorting":"0",
 	},"OUTPUT": {
@@ -161,7 +161,6 @@ def downloadAlbum(link,i):
 				else:
 					imageUrl = decodedData[0]["response"]["items"][w]["photo_604"]
 				utils.downloadImage(imageUrl, options.preset["SETUP"]["data_location"]+"/"+str(albumFolder)+"/"+str(pid)+".jpg")
-				#print("Numbers is: "+str(numbers)+", curNums is: "+str(curNums)+", PID is: "+str(pid)+", Cycle w is: "+str(w))
 				pid += 1
 		else:
 			utils.outputMessage(40, "API error: "+decodedData[0]["error"]["error_msg"]+".")
