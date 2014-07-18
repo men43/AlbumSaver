@@ -39,7 +39,10 @@ class utils(object):
 			options.preset[section[0]][section[1]] = rs[(section[0],section[1])]
 		return
 	def apiGet(method, params):
-		request = urllib.request.Request("https://api.vk.com/method/"+method+"?"+params+"&rev="+options.preset["SETUP"]["photo_sorting"]+"&v="+options.preset["SETUP"]["api_version"])
+		if options.preset["AUTHORIZATION"]["use_token"] is 1: #WHY
+			request = urllib.request.Request("https://api.vk.com/method/"+method+"?"+params+"&rev="+options.preset["SETUP"]["photo_sorting"]+"&v="+options.preset["SETUP"]["api_version"])
+		else:
+			request = urllib.request.Request("https://api.vk.com/method/"+method+"?"+params+"&rev="+options.preset["SETUP"]["photo_sorting"]+"&v="+options.preset["SETUP"]["api_version"]+"&access_token="+options.preset["AUTHORIZATION"]["access_token"])
 		return urllib.request.urlopen(request).read().decode("utf8")
 	def downloadImage(url, filename):
 		request = urllib.request.Request(url)
@@ -89,7 +92,7 @@ def startup():
 		utils.createConfig()
 	utils.initLogging()
 	utils.checkVersion()
-	if options.preset["AUTHORIZATION"]["access_token"].strip() == "":
+	if options.preset["AUTHORIZATION"]["access_token"].strip() == "" and options.preset["AUTHORIZATION"]["use_token"] is 1:
 		utils.outputMessage(30, "Can't find your access token, you can input it manually.")
 		accessToken = input("Token (press ENTER for non-token mode): ")
 		if accessToken.strip() == "":
@@ -124,32 +127,47 @@ def downloadAlbum(link,i):
 		specical = "saved"
 	else:
 		apiRequest += "&album_id="+str(full[1])
-	try:
-		rawAlbumData = utils.apiGet("photos.get", apiRequest)
-		rawAlbumName = utils.apiGet("photos.getAlbums", "owner_id="+str(full[0])+"&album_ids="+str(full[1]))
-	except:
-		utils.outputMessage(50, "Can't connect to VK API. Check your internet connection. Terminating.")
-		sys.exit()
-	decodedData = [json.loads(rawAlbumData), json.loads(rawAlbumName)]
-	if options.preset["AUTHORIZATION"]["use_token"] != 0 and specical == 0: albumFolder = decodedData[1]["response"]["items"][0]["title"]
-	elif options.preset["AUTHORIZATION"]["use_token"] == 0 and specical == 0: albumFolder = i
-	elif specical != 0: albumFolder = str(full[0])+"_"+specical
-	if "error" not in decodedData[0]:
-		os.mkdir(options.preset["SETUP"]["data_location"]+"/"+str(albumFolder))
-		for w in range(0,decodedData[0]["response"]["count"]):
-			if "photo_2560" in decodedData[0]["response"]["items"][w]:
-				imageUrl = decodedData[0]["response"]["items"][w]["photo_2560"]
-			elif "photo_1280" in decodedData[0]["response"]["items"][w]:
-				imageUrl = decodedData[0]["response"]["items"][w]["photo_1280"]
-			elif "photo_807" in decodedData[0]["response"]["items"][w]:
-				imageUrl = decodedData[0]["response"]["items"][w]["photo_807"]
-			else:
-				imageUrl = decodedData[0]["response"]["items"][w]["photo_604"]
-			utils.downloadImage(imageUrl, options.preset["SETUP"]["data_location"]+"/"+str(albumFolder)+"/"+str(w+1)+".jpg")
-		utils.outputMessage(20, "Finished "+str(albumFolder)+" album, downloaded "+str(decodedData[0]["response"]["count"])+" photos.")
-	else:
-		utils.outputMessage(50, "API error: "+decodedData[0]["error"]["error_msg"]+". Terminating.")
-		sys.exit()
+	pid = 1
+	numbers = 0
+	while True:
+		if pid >= 1000: apiRequest += "&offset="+str(pid-1)
+		try:
+			rawAlbumData = utils.apiGet("photos.get", apiRequest)
+			rawAlbumName = utils.apiGet("photos.getAlbums", "owner_id="+str(full[0])+"&album_ids="+str(full[1]))
+		except:
+			utils.outputMessage(50, "Can't connect to VK API. Check your internet connection. Terminating.")
+			sys.exit()
+		decodedData = [json.loads(rawAlbumData), json.loads(rawAlbumName)]
+		if specical == 0 and "error" not in decodedData[1]: albumFolder = decodedData[1]["response"]["items"][0]["title"]
+		if specical != 0: albumFolder = str(full[0])+"_"+specical
+		if pid == 1 and "error" not in decodedData[1]: os.mkdir(options.preset["SETUP"]["data_location"]+"/"+str(albumFolder))
+		if "error" not in decodedData[0]:
+			numbers = decodedData[0]["response"]["count"]
+			curNums = 1000
+			if pid >= 1000:
+				numbers -= pid - 1
+			if pid >= len(decodedData[0]["response"]["items"]):
+				curNums = numbers
+			if len(decodedData[0]["response"]["items"]) < 1000:
+				curNums = numbers
+			for w in range(0,curNums):
+				numbers -= 1
+				if "photo_2560" in decodedData[0]["response"]["items"][w]:
+					imageUrl = decodedData[0]["response"]["items"][w]["photo_2560"]
+				elif "photo_1280" in decodedData[0]["response"]["items"][w]:
+					imageUrl = decodedData[0]["response"]["items"][w]["photo_1280"]
+				elif "photo_807" in decodedData[0]["response"]["items"][w]:
+					imageUrl = decodedData[0]["response"]["items"][w]["photo_807"]
+				else:
+					imageUrl = decodedData[0]["response"]["items"][w]["photo_604"]
+				utils.downloadImage(imageUrl, options.preset["SETUP"]["data_location"]+"/"+str(albumFolder)+"/"+str(pid)+".jpg")
+				#print("Numbers is: "+str(numbers)+", curNums is: "+str(curNums)+", PID is: "+str(pid)+", Cycle w is: "+str(w))
+				pid += 1
+		else:
+			utils.outputMessage(40, "API error: "+decodedData[0]["error"]["error_msg"]+".")
+		if numbers < 1: 
+			if "error" not in decodedData[0]: utils.outputMessage(20, "Finished "+str(albumFolder)+" album, downloaded "+str(decodedData[0]["response"]["count"])+" photos.")
+			break
 	return
 
 def run():
