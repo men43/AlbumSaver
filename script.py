@@ -38,6 +38,51 @@ class utils(object):
 		for section in rs.keys():
 			options.preset[section[0]][section[1]] = rs[(section[0],section[1])]
 		return
+	def checkConfig():
+		config = configparser.ConfigParser()
+		config.read(options.preset["SETUP"]["config_file"])
+		mismatch = 0
+		temp = {}
+		vr = {}
+		for opt in config:
+			for n, key in enumerate(config[opt].keys()):
+				rem = list(config[opt].values())
+				temp[(opt, key)] = rem[n]
+		if((options.preset["SETUP"]["script_version"].replace(".",",")) > temp[("SETUP","script_version")].replace(".",",")):
+			mismatch = 1
+		if(options.preset["SETUP"]["script_version"].replace(".",",") < temp[("SETUP","script_version")].replace(".",",")):
+			mismatch = 2
+		for opt in options.preset.keys():
+			for key in options.preset[opt].keys():
+				try:
+					temp[(opt,key)]
+				except KeyError:
+					print("KeyError on "+key)
+					vr[(key)] = mismatch
+		vr[0] = mismatch
+		return vr
+	def configResolve(task,update):
+		config = configparser.ConfigParser()
+		override = configparser.ConfigParser()
+		config.read(options.preset["SETUP"]["config_file"])
+		temp = {}
+		for opt in config:
+			for n, key in enumerate(config[opt].keys()):
+				rem = list(config[opt].values())
+				temp[(opt, key)] = rem[n]
+		for section in options.preset.keys():
+			override.add_section(section)
+			for key in options.preset[section].keys():
+				if(update == 0):
+					try:
+						override.set(section, key, str(temp[(section,key)]))
+					except KeyError:
+						override.set(section, key, str(options.preset[section][key]))
+				elif(update == 1):
+					override.set(section, key, str(options.preset[section][key]))
+		with open(options.preset["SETUP"]["config_file"], 'w+') as configfile:
+			override.write(configfile)
+		return
 	def apiGet(method, params):
 		if options.preset["AUTHORIZATION"]["use_token"] is 1: #WHY
 			request = urllib.request.Request("https://api.vk.com/method/"+method+"?"+params+"&rev="+options.preset["SETUP"]["photo_sorting"]+"&v="+options.preset["SETUP"]["api_version"])
@@ -69,12 +114,11 @@ class options(object):
 	preset = {
 	"SETUP": {
 		"script_location":os.path.dirname(os.path.realpath(sys.argv[0])) + "\\",
-		"system_encoding":utils.systemEncoding(),
 		"data_location":"res",
 		"links_file":"links.txt",
-		"config_file":"config.ini", #NOT(!) IN CONFIG 
+		"config_file":"config.ini",
 		"log_file":"dump.log",
-		"script_version":"0.6",
+		"script_version":"0.6.5",
 		"api_version":"5.23",
 		"photo_sorting":"0",
 	},"OUTPUT": {
@@ -87,11 +131,23 @@ class options(object):
 
 def startup():
 	if os.path.exists(options.preset["SETUP"]["config_file"]):
-		cfg = utils.readConfig()
+		upd = 0
+		ch = utils.checkConfig()
+		if ch[0] == 0 and len(ch) < 2:
+			print("Starting VK PhotoSaver. Your config file is up to date. Version v "+options.preset["SETUP"]["script_version"])
+		else:
+			answer = input("Detected "+str(len(ch))+" missing elements in your config. Want to update? (y/n): ")
+			if(answer == "y"):
+				if(ch[0] == 1):
+					answer = input("Detected version mismatch. Do you want to update your config with default values? (y/n): ")
+					if(answer == "y"): upd = 1
+				utils.configResolve(ch,upd)
 	else:
 		utils.createConfig()
+	utils.readConfig()
 	utils.initLogging()
 	utils.checkVersion()
+	#ins = input("Entering IDLE mode.")
 	if options.preset["AUTHORIZATION"]["access_token"].strip() == "" and options.preset["AUTHORIZATION"]["use_token"] is 1:
 		utils.outputMessage(30, "Can't find your access token, you can input it manually.")
 		accessToken = input("Token (press ENTER for non-token mode): ")
