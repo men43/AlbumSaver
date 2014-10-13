@@ -2,7 +2,7 @@ import time,os,sys,configparser,urllib.request,json,logging,platform
 
 class utils(object):
 	def initLogging():
-		format = logging.Formatter("[%(asctime)s][%(levelname)s] %(message)s", "%d-%m-%y, %H:%M:%S")
+		format = logging.Formatter("[%(levelname)s][%(asctime)s] %(message)s", "%d-%m-%y, %H:%M:%S")
 		logger = logging.getLogger("root")
 		logger.setLevel(20)
 		if options.preset["OUTPUT"]["output_log"] != 0:
@@ -57,7 +57,6 @@ class utils(object):
 				try:
 					temp[(opt,key)]
 				except KeyError:
-					print("KeyError on "+key)
 					vr[(key)] = mismatch
 		vr[0] = mismatch
 		return vr
@@ -96,8 +95,6 @@ class utils(object):
 		writeable.write(image.read())
 		writeable.close()
 		return
-	def systemEncoding():
-		return "cp1251" if sys.platform != "win32" or platform.release() != "8" else "utf8"	#extremely bad but working solution
 	def checkVersion():
 		try:
 			request = urllib.request.Request("https://raw.githubusercontent.com/men43/AlbumSaver/master/version")
@@ -118,8 +115,8 @@ class options(object):
 		"links_file":"links.txt",
 		"config_file":"config.ini",
 		"log_file":"dump.log",
-		"script_version":"0.6.5",
-		"api_version":"5.23",
+		"script_version":"0.6.6",
+		"api_version":"5.25",
 		"photo_sorting":"0",
 	},"OUTPUT": {
 		"output_log":1,
@@ -147,7 +144,6 @@ def startup():
 	utils.readConfig()
 	utils.initLogging()
 	utils.checkVersion()
-	#ins = input("Entering IDLE mode.")
 	if options.preset["AUTHORIZATION"]["access_token"].strip() == "" and options.preset["AUTHORIZATION"]["use_token"] is 1:
 		utils.outputMessage(30, "Can't find your access token, you can input it manually.")
 		accessToken = input("Token (press ENTER for non-token mode): ")
@@ -217,6 +213,7 @@ def downloadAlbum(link,i):
 				else:
 					imageUrl = decodedData[0]["response"]["items"][w]["photo_604"]
 				utils.downloadImage(imageUrl, options.preset["SETUP"]["data_location"]+"/"+str(albumFolder)+"/"+str(pid)+".jpg")
+				utils.outputMessage(20, "Saved "+str(pid)+".jpg")
 				pid += 1
 		else:
 			utils.outputMessage(40, "API error: "+decodedData[0]["error"]["error_msg"]+".")
