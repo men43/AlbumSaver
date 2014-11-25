@@ -1,132 +1,158 @@
-import karasykUtils,os,sys,json,time
+import os
+import sys
+import karasykUtils
+import json
+import time
+import threading
+from queue import Queue
+import random
+import re
 
-class options(object):
-	preset = {
-	"SETUP": {
-		"script_location":os.path.dirname(os.path.realpath(sys.argv[0])) + "\\",
-		"data_location":"res",
-		"links_file":"links.txt",
-		"config_file":"config.ini",
-		"log_file":"dump.log",
-		"script_version":"0.7",
-		"api_version":"5.25",
-		"photo_sorting":"0",
-	},"OUTPUT": {
-		"output_log":1,
-		"output_console":1,
-	},"AUTHORIZATION": {
-		"access_token":"",
-		"use_token":0
-	}}
-	set = {}
 
-def startup():
-	if os.path.exists(options.preset["SETUP"]["config_file"]):
-		upd = 0
-		ch = karasykUtils.config.checkConfig(options.preset)
-		if ch[0] == 0 and len(ch) < 2:
-			print("Starting VK PhotoSaver. Your config file is up to date. Version v"+options.preset["SETUP"]["script_version"])
-		else:
-			answer = input("Detected "+str(len(ch))+" missing elements in your config. Want to update? (y/n): ")
-			if(answer == "y"):
-				if(ch[0] == 1):
-					answer = input("Detected version mismatch. Do you want to update your config with default values? (y/n): ")
-					if(answer == "y"): upd = 1
-				karasykUtils.config.configResolve(options.preset,upd)
-	else:
-		karasykUtils.config.createConfig(options.preset)
-	options.set = karasykUtils.config.readConfig(options.preset["SETUP"]["config_file"])
-	karasykUtils.output.initLogging(options.preset["OUTPUT"]["output_log"], options.preset["OUTPUT"]["output_console"], options.preset["SETUP"]["log_file"])
-	karasykUtils.web.checkVersion(options.preset["SETUP"]["script_version"])
-	if options.set[("AUTHORIZATION","access_token")].strip() == "" and options.set[("AUTHORIZATION","use_token")] is 1:
-		karasykUtils.output.outputMessage(30, "Can't find your access token, you can input it manually.")
-		accessToken = input("Token (press ENTER for non-token mode): ")
-		if accessToken.strip() == "":
-			karasykUtils.output.outputMessage(20, "Non-token mode enabled.")
-			options.set[("AUTHORIZATION","access_token")] = ""
-			options.set[("AUTHORIZATION","use_token")] = 0
-		else:
-			options.set[("AUTHORIZATION","access_token")] = accessToken
-	if os.path.exists(options.set[("SETUP","script_location")]+options.set[("SETUP","data_location")]) != True:
-		karasykUtils.output.outputMessage(20, "Can't find data folder, creating.")
-		os.mkdir(options.set[("SETUP","script_location")]+options.set[("SETUP","data_location")])
-	if os.path.exists(options.set[("SETUP","links_file")]):
-		karasykUtils.output.outputMessage(20, "Links file is present, reading.")
-	else:
-		karasykUtils.output.outputMessage(50, "Can't find links file. Terminating.")
-		sys.exit()
-	return open(options.set[("SETUP","links_file")], 'r').readlines()
+class Options(object):
+    preset = {
+        "BASE": {
+            "script_version": 0.8,
+            "api_version": 5.27,
+            "photo_sorting": 0,
+            "threads": 4,
+        }, "FILES": {
+            "script_location": os.path.dirname(os.path.realpath(sys.argv[0])) + "\\",
+            "data_location": "res",
+            "links_file": "links.txt",
+            "config_file": "config.ini",
+            "log_file": "dump.log",
+        }, "OUTPUT": {
+            "output_console": 1,
+            "output_log": 1,
+            "output_debug": 0,
+        }, "AUTHORIZATION": {
+            "use_token": 0,
+            "access_token": "",
+        }
+    }
+    set = {}
 
-def downloadAlbum(link,i):
-	raw = link.split("album")
-	full = raw[1].split("_")
-	apiRequest = "owner_id="+str(full[0])
-	specical = 0
-	if full[1] == "0":
-		apiRequest += "&album_id=profile"
-		specical = "profile"
-	elif full[1] == "00":
-		apiRequest += "&album_id=wall"
-		specical = "wall"
-	elif full[1] == "000":
-		apiRequest += "&album_id=saved"
-		specical = "saved"
-	else:
-		apiRequest += "&album_id="+str(full[1])
-	pid = 1
-	numbers = 0
-	while True:
-		if pid >= 1000: apiRequest += "&offset="+str(pid-1)
-		try:
-			rawAlbumData = karasykUtils.web.apiGet("photos.get?"+apiRequest,options.set)
-			rawAlbumName = karasykUtils.web.apiGet("photos.getAlbums?owner_id="+str(full[0])+"&album_ids="+str(full[1]),options.set)
-		except:
-			karasykUtils.output.outputMessage(50, "Can't connect to VK API. Check your internet connection. Terminating.")
-			sys.exit()
-		decodedData = [json.loads(rawAlbumData), json.loads(rawAlbumName)]
-		if specical == 0 and "error" not in decodedData[1]: albumFolder = decodedData[1]["response"]["items"][0]["title"]
-		if specical != 0: albumFolder = str(full[0])+"_"+specical
-		if pid == 1 and "error" not in decodedData[1]:
-			try:
-				os.mkdir(options.set[("SETUP","data_location")]+"/"+str(albumFolder))
-			except OSError:
-				albumFolder += "_"+str(int(time.time()))
-				os.mkdir(options.set[("SETUP","data_location")]+"/"+str(albumFolder))
-		if "error" not in decodedData[0]:
-			numbers = decodedData[0]["response"]["count"]
-			curNums = 1000
-			if pid >= 1000:
-				numbers -= pid - 1
-			if pid >= len(decodedData[0]["response"]["items"]):
-				curNums = numbers
-			if len(decodedData[0]["response"]["items"]) < 1000:
-				curNums = numbers
-			for w in range(0,curNums):
-				numbers -= 1
-				if "photo_2560" in decodedData[0]["response"]["items"][w]:
-					imageUrl = decodedData[0]["response"]["items"][w]["photo_2560"]
-				elif "photo_1280" in decodedData[0]["response"]["items"][w]:
-					imageUrl = decodedData[0]["response"]["items"][w]["photo_1280"]
-				elif "photo_807" in decodedData[0]["response"]["items"][w]:
-					imageUrl = decodedData[0]["response"]["items"][w]["photo_807"]
-				else:
-					imageUrl = decodedData[0]["response"]["items"][w]["photo_604"]
-				karasykUtils.web.downloadImage(imageUrl, options.set[("SETUP","data_location")]+"/"+str(albumFolder)+"/"+str(pid)+".jpg")
-				karasykUtils.output.outputMessage(20, "Saved "+str(pid)+".jpg")
-				pid += 1
-		else:
-			karasykUtils.output.outputMessage(40, "API error: "+decodedData[0]["error"]["error_msg"])
-		if numbers < 1:
-			if "error" not in decodedData[0]: karasykUtils.output.outputMessage(20, "Finished "+str(albumFolder)+" album, downloaded "+str(decodedData[0]["response"]["count"])+" photos.")
-			break
-	return
+lock = threading.Lock()
+q = Queue()
 
-def run():
-	links = startup()
-	if len(links) == 0:
-		karasykUtils.output.outputMessage(50, "Links file is empty, terminating.")
-		sys.exit()
-	for n,i in enumerate(links):
-		downloadAlbum(i.rstrip("\n"),n)
-	return
-run()
+
+def script_init():
+    if os.path.exists(Options.preset["FILES"]["config_file"]):
+        karasykUtils.Cfg.check_config(Options.preset)
+    else:
+        karasykUtils.Cfg.create_config(Options.preset)
+    Options.set = karasykUtils.Cfg.read_config(Options.preset)
+    karasykUtils.Out.init_logging(Options.set)
+    karasykUtils.Out.output_message(10, "Executing startup checks.")
+    token = karasykUtils.Web.check_token(Options.set)
+    Options.set[("AUTHORIZATION", "use_token")] = token[0]
+    Options.set[("AUTHORIZATION", "access_token")] = token[1]
+    karasykUtils.Saver.check_version(Options.preset["BASE"]["script_version"])
+    if os.path.exists(Options.set[("FILES", "data_location")]) is not True:
+        karasykUtils.Out.output_message(30, "Can't locate data folder. Trying to create one.")
+        try:
+            os.mkdir(Options.set[("FILES", "data_location")])
+        except OSError:
+            karasykUtils.Out.output_message(50, "Can't create data folder. Terminating.")
+            sys.exit()
+    if os.path.exists(Options.set[("FILES", "links_file")]):
+        karasykUtils.Out.output_message(10, "Located links file, reading.")
+    else:
+        karasykUtils.Out.output_message(50, "Can't locate links file. Terminating.")
+        sys.exit()
+    return
+
+
+def parse_album(data):
+    clean = data.split("_")
+    api_request = karasykUtils.Saver.build_request(clean)
+    current = 1
+    offset = 0
+    temp = []
+    karasykUtils.Out.output_message(10, "Populating queue.")
+    album_folder = str(int(random.random() * 99999))
+    while True:
+        api_request[0] += "&offset="+str(offset)
+        try:
+            json_album_data = karasykUtils.Web.api_get(api_request[0], Options.set)
+            json_album_name = karasykUtils.Web.api_get(api_request[1], Options.set)
+        except ConnectionError:
+            karasykUtils.Out.output_message(50, "Can't connect to VK Api. Terminating.")
+            sys.exit()
+        decoded_data = [json.loads(json_album_data), json.loads(json_album_name)]
+        if current is 1:
+            if "error" not in decoded_data[1]:
+                try:
+                    album_folder = re.sub('[/:*?<>|]', '', decoded_data[1]["response"]["items"][0]["title"])
+                except IndexError:
+                    album_folder = str(int(time.time())) + "_" + str(int(random.random() * 9999))
+            else:
+                album_folder = str(int(time.time())) + "_" + str(int(random.random() * 9999))
+            try:
+                os.mkdir(Options.set[("FILES", "data_location")]+"/"+str(album_folder))
+            except OSError:
+                album_folder += "_" + str(int(random.random() * 9999))
+                os.mkdir(Options.set[("FILES", "data_location")]+"/"+album_folder)
+        if "error" not in decoded_data[0]:
+            if int(decoded_data[0]["response"]["count"] - offset) <= 0:
+                break
+            for w in range(0, len(decoded_data[0]["response"]["items"])):
+                image_url = [0, 1, 2]
+                image_url[1] = album_folder
+                image_url[2] = str(offset+1)
+                try:
+                    image_url[0] = decoded_data[0]["response"]["items"][w]["photo_604"]
+                except KeyError:
+                    pass
+                try:
+                    image_url[0] = decoded_data[0]["response"]["items"][w]["photo_807"]
+                except KeyError:
+                    pass
+                try:
+                    image_url[0] = decoded_data[0]["response"]["items"][w]["photo_1280"]
+                except KeyError:
+                    pass
+                try:
+                    image_url[0] = decoded_data[0]["response"]["items"][w]["photo_2560"]
+                except KeyError:
+                    pass
+                offset += 1
+                temp.append(image_url)
+            if int(decoded_data[0]["response"]["count"] - offset) > 1000:
+                current += 1
+        else:
+            karasykUtils.Out.output_message(50, str(decoded_data[0]["error"]["error_msg"]))
+    for obj in temp:
+        q.put(obj)
+    karasykUtils.Out.output_message(10, "Queue populated. Downloading album " + str(album_folder))
+    return
+
+
+def download_photo(link):
+    with lock:
+        karasykUtils.Web.download_file(link[0], "res"+"/" + link[1] + "/" + link[2] + ".jpg")
+        karasykUtils.Out.output_message(10, "Downloaded "+link[2] + ".jpg, " + "Thread: "
+                                        + threading.current_thread().name)
+    return
+
+
+def worker():
+    while True:
+        itm = q.get()
+        download_photo(itm)
+        q.task_done()
+
+script_init()
+raw_links = open(Options.set[("FILES", "links_file")], "r").readlines()
+
+for i in range(int(Options.set[("BASE", "threads")])):
+    thread = threading.Thread(target=worker)
+    thread.daemon = True
+    thread.start()
+
+for item in raw_links:
+    raw = item.split("album")
+    parse_album(raw[1])
+    q.join()
+    karasykUtils.Out.output_message(20, "Downloaded album.")
