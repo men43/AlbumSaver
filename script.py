@@ -12,9 +12,9 @@ import re
 class Options(object):
     preset = {
         "BASE": {
-            "script_version": 0.8,
-            "api_version": 5.27,
+            "script_version": 0.9,
             "photo_sorting": 0,
+            "api_version": 5.30,
             "threads": 4,
         }, "FILES": {
             "script_location": os.path.dirname(os.path.realpath(sys.argv[0])) + "\\",
@@ -64,8 +64,40 @@ def script_init():
     return
 
 
+def parse_audio(data):
+    offset = 0
+    current = 1
+    temp = []
+    audio_folder = data[1] + "_audios"
+    try:
+        os.mkdir(Options.set[("FILES", "data_location")]+"/"+str(audio_folder))
+    except OSError:
+        audio_folder += "_" + str(int(random.random() * 9999))
+        os.mkdir(Options.set[("FILES", "data_location")]+"/"+audio_folder)
+    while True:
+        if current != 1 and offset >= decoded_data["response"][0]:
+            break
+        request = data[1] + "&offset=" + str(offset)
+        offset += 6000
+        json_audio_data = karasykUtils.Web.api_get(request, Options.set, "audio")
+        decoded_data = json.loads(json_audio_data)
+        if "error" not in decoded_data:
+            for w in range(1, len(decoded_data["response"])-1):
+                temp.append([decoded_data["response"][w]["url"], re.sub('[/:*?<>|]', '', decoded_data["response"][w]["artist"]),
+                             re.sub('[/:*?<>|]', '', decoded_data["response"][w]["title"]),
+                             "audio", audio_folder])
+            for obj in temp:
+                q.put(obj)
+        else:
+            karasykUtils.Out.output_message(50, str(decoded_data["error"]["error_msg"]))
+            exit()
+        current += 1
+    karasykUtils.Out.output_message(10, "Queue populated. Downloading audio for " + str(audio_folder))
+    return
+
+
 def parse_album(data):
-    clean = data.split("_")
+    clean = data[1].split("_")
     api_request = karasykUtils.Saver.build_request(clean)
     current = 1
     offset = 0
@@ -73,10 +105,12 @@ def parse_album(data):
     karasykUtils.Out.output_message(10, "Populating queue.")
     album_folder = str(int(random.random() * 99999))
     while True:
+        if current != 1 and int(decoded_data[0]["response"]["count"] - offset) <= 0:
+            break
         api_request[0] += "&offset="+str(offset)
         try:
-            json_album_data = karasykUtils.Web.api_get(api_request[0], Options.set)
-            json_album_name = karasykUtils.Web.api_get(api_request[1], Options.set)
+            json_album_data = karasykUtils.Web.api_get(api_request[0], Options.set, "photo")
+            json_album_name = karasykUtils.Web.api_get(api_request[1], Options.set, "photo")
         except ConnectionError:
             karasykUtils.Out.output_message(50, "Can't connect to VK Api. Terminating.")
             sys.exit()
@@ -95,12 +129,11 @@ def parse_album(data):
                 album_folder += "_" + str(int(random.random() * 9999))
                 os.mkdir(Options.set[("FILES", "data_location")]+"/"+album_folder)
         if "error" not in decoded_data[0]:
-            if int(decoded_data[0]["response"]["count"] - offset) <= 0:
-                break
             for w in range(0, len(decoded_data[0]["response"]["items"])):
-                image_url = [0, 1, 2]
+                image_url = [0, 1, 2, 3]
                 image_url[1] = album_folder
                 image_url[2] = str(offset+1)
+                image_url[3] = "photo"
                 try:
                     image_url[0] = decoded_data[0]["response"]["items"][w]["photo_604"]
                 except KeyError:
@@ -119,8 +152,7 @@ def parse_album(data):
                     pass
                 offset += 1
                 temp.append(image_url)
-            if int(decoded_data[0]["response"]["count"] - offset) > 1000:
-                current += 1
+            current += 1
         else:
             karasykUtils.Out.output_message(50, str(decoded_data[0]["error"]["error_msg"]))
     for obj in temp:
@@ -129,20 +161,26 @@ def parse_album(data):
     return
 
 
-def download_photo(link):
+def task_download(link):
     with lock:
-        karasykUtils.Web.download_file(link[0], "res"+"/" + link[1] + "/" + link[2] + ".jpg")
-        karasykUtils.Out.output_message(10, "Downloaded "+link[2] + ".jpg, " + "Thread: "
-                                        + threading.current_thread().name)
+        if link[3] is "photo":
+            karasykUtils.Web.download_file(link[0], "res"+"/" + link[1] + "/" + link[2] + ".jpg")
+            karasykUtils.Out.output_message(10, "Downloaded " + link[2] + ".jpg, " + "Thread: "
+                                            + threading.current_thread().name)
+        else:
+            karasykUtils.Web.download_file(link[0], "res"+"/" + link[4] + "/" + link[1] + " - " + link[2] + ".mp3")
+            karasykUtils.Out.output_message(10, "Downloaded " + link[1] + " - " + link[2] + ".mp3, " + "Thread: "
+                                            + threading.current_thread().name)
     return
 
 
 def worker():
     while True:
         itm = q.get()
-        download_photo(itm)
+        task_download(itm)
         q.task_done()
 
+print(sys.stdout.encoding)
 script_init()
 raw_links = open(Options.set[("FILES", "links_file")], "r").readlines()
 
@@ -152,7 +190,9 @@ for i in range(int(Options.set[("BASE", "threads")])):
     thread.start()
 
 for item in raw_links:
-    raw = item.split("album")
-    parse_album(raw[1])
+    if "audios" in item:
+        parse_audio(item.split("audios"))
+    else:
+        parse_album(item.split("album"))
     q.join()
-    karasykUtils.Out.output_message(20, "Downloaded album.")
+    karasykUtils.Out.output_message(20, "Task completed.")

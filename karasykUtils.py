@@ -107,17 +107,22 @@ class Cfg(object):
 
 class Web(object):
     @staticmethod
-    def api_get(req, settings):
-        if settings[("AUTHORIZATION", "use_token")] == 1:
-            request = urllib.request.Request("https://api.vk.com/method/"+req
-                                             + "&rev="+settings[("BASE", "photo_sorting")]
-                                             + "&v="+settings[("BASE", "api_version")])
+    def api_get(req, settings, request_type):
+        if request_type is "audio":
+            request = urllib.request.Request("https://api.vk.com/method/audio.get?owner_id="
+                                             + req + "&access_token=" +
+                                             str(settings[("AUTHORIZATION", "access_token")]))
         else:
-            request = urllib.request.Request("https://api.vk.com/method/"+req+"&rev="
-                                             + settings[("BASE", "photo_sorting")]
-                                             + "&v="+settings[("BASE", "api_version")]
-                                             + "&access_token="+settings[("AUTHORIZATION", "access_token")])
-        return urllib.request.urlopen(request).read().decode("utf8")
+            if settings[("AUTHORIZATION", "use_token")] is 0:
+                request = urllib.request.Request("https://api.vk.com/method/"+req
+                                                 + "&rev="+settings[("BASE", "photo_sorting")]
+                                                 + "&v="+settings[("BASE", "api_version")])
+            else:
+                request = urllib.request.Request("https://api.vk.com/method/"+req+"&rev="
+                                                 + settings[("BASE", "photo_sorting")]
+                                                 + "&v="+settings[("BASE", "api_version")]
+                                                 + "&access_token="+str(settings[("AUTHORIZATION", "access_token")]))
+        return urllib.request.urlopen(request).read().decode("utf-8")
 
     @staticmethod
     def download_file(link, filename):
@@ -135,7 +140,7 @@ class Web(object):
     def check_token(opt):
         result = [0, 1]
         if opt[("AUTHORIZATION", "use_token")] == "1" and opt[("AUTHORIZATION", "access_token")].strip() == "":
-            Out.output_message(30, "Can't find your access token, you can input it manually.")
+            Out.output_message(30, "Can't find your access token, you can input it from keyboard.")
             token = input("Token (press ENTER for non-token mode): ")
             if token.strip() == "":
                 Out.output_message(20, "Non-token mode enabled.")
@@ -144,6 +149,9 @@ class Web(object):
             else:
                 result[0] = 1
                 result[1] = token
+        else:
+            result[0] = 1
+            result[1] = opt[("AUTHORIZATION", "access_token")]
         return result
 
 
