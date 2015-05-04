@@ -1,6 +1,7 @@
 import logging
 import configparser
 import urllib.request
+import urllib.error
 
 
 class Out(object):
@@ -8,15 +9,15 @@ class Out(object):
     def init_logging(settings):
         form = logging.Formatter("[%(asctime)s][%(levelname)s] %(message)s", "%d-%m-%y, %H:%M:%S")
         logger = logging.getLogger("root")
-        if int(settings[("OUTPUT", "output_debug")]) == 1:
+        if settings[("OUTPUT", "output_debug")] == "True":
             logger.setLevel(10)
         else:
             logger.setLevel(20)
-        if settings[("OUTPUT", "output_log")] != 0:
+        if settings[("OUTPUT", "output_log")] != "False":
             file_handler = logging.FileHandler(settings[("FILES", "log_file")])
             file_handler.setFormatter(form)
             logger.addHandler(file_handler)
-        if settings[("OUTPUT", "output_console")] != 0:
+        if settings[("OUTPUT", "output_console")] == "True":
             console_handler = logging.StreamHandler()
             console_handler.setFormatter(form)
             logger.addHandler(console_handler)
@@ -63,7 +64,8 @@ class Cfg(object):
             for n, key in enumerate(cfg[sect].keys()):
                 rem = list(cfg[sect].values())
                 temp[(sect, key)] = rem[n]
-        if settings["BASE"]["script_version"] > float(temp[("BASE", "script_version")]):
+        if temp[("BASE", "check_config_version")] == "True"\
+                and str(settings["BASE"]["script_version"]) > str(temp[("BASE", "script_version")]):
             answer = input("Detected version mismatch. Do you want to update your config with default values? (y/n): ")
             if answer is "y":
                 Cfg.fix_config(settings, 0)
@@ -76,9 +78,9 @@ class Cfg(object):
         if vr != 0:
             answer = input("Detected "+str(vr)+" missing elements in your config. Want to update? (y/n): ")
             if answer is "y":
-                Out.output_message(10, "Fixing config.")
+                print("Fixing config.")
                 Cfg.fix_config(settings, 1)
-        return
+        return vr
 
     @staticmethod
     def fix_config(settings, upd):
@@ -107,21 +109,12 @@ class Cfg(object):
 
 class Web(object):
     @staticmethod
-    def api_get(req, settings, request_type):
-        if request_type is "audio":
-            request = urllib.request.Request("https://api.vk.com/method/audio.get?owner_id="
-                                             + req + "&access_token=" +
-                                             str(settings[("AUTHORIZATION", "access_token")]))
-        else:
-            if settings[("AUTHORIZATION", "use_token")] is 0:
-                request = urllib.request.Request("https://api.vk.com/method/"+req
-                                                 + "&rev="+settings[("BASE", "photo_sorting")]
-                                                 + "&v="+settings[("BASE", "api_version")])
-            else:
-                request = urllib.request.Request("https://api.vk.com/method/"+req+"&rev="
-                                                 + settings[("BASE", "photo_sorting")]
-                                                 + "&v="+settings[("BASE", "api_version")]
-                                                 + "&access_token="+str(settings[("AUTHORIZATION", "access_token")]))
+    def api_get(api_request, settings):
+        addition_token = ""
+        if settings[("AUTHORIZATION", "use_token")] is True:
+            addition_token = "&access_token="+str(settings[("AUTHORIZATION", "access_token")])
+        request = urllib.request.Request("https://api.vk.com/method/" + api_request
+                                         + "&v=" + settings[("BASE", "api_version")] + addition_token)
         return urllib.request.urlopen(request).read().decode("utf-8")
 
     @staticmethod
@@ -139,50 +132,36 @@ class Web(object):
     @staticmethod
     def check_token(opt):
         result = [0, 1]
-        if opt[("AUTHORIZATION", "use_token")] == "1" and opt[("AUTHORIZATION", "access_token")].strip() == "":
+        if opt[("AUTHORIZATION", "use_token")] == "True" and opt[("AUTHORIZATION", "access_token")].strip() == "":
             Out.output_message(30, "Can't find your access token, you can input it from keyboard.")
             token = input("Token (press ENTER for non-token mode): ")
             if token.strip() == "":
                 Out.output_message(20, "Non-token mode enabled.")
-                result[0] = 0
+                result[0] = False
                 result[1] = ""
             else:
-                result[0] = 1
+                result[0] = True
                 result[1] = token
         else:
-            result[0] = 1
+            result[0] = True
             result[1] = opt[("AUTHORIZATION", "access_token")]
         return result
 
 
 class Saver(object):
     @staticmethod
-    def check_version(version):
+    def update_check(version):
         try:
             request = urllib.request.Request("https://raw.githubusercontent.com/men43/AlbumSaver/master/version")
             latest = urllib.request.urlopen(request).read().decode("utf8")
         except ConnectionError:
             latest = 0
-        if float(latest) != version:
+        if str(latest) != str(version):
             Out.output_message(30, "Your script is out of date. "
                                    "Get a new version here: https://github.com/men43/AlbumSaver")
         elif latest is 0:
-            Out.output_message(30, "Can't check script version. You might have network issues.")
+            Out.output_message(30, "Can't check script version. This may be caused by network issues. Check your"
+                                   "internet connection and try again.")
         else:
             Out.output_message(10, "Completed version check. Everything is up to date.")
         return
-
-    @staticmethod
-    def build_request(link):
-        owner = "owner_id="+str(link[0])
-        album = "album_id="+str(link[1])
-        request = [0, 1]
-        if link[1].strip() == "0":
-            album = "&album_id=profile"
-        elif link[1].strip() == "00":
-            album = "&album_id=wall"
-        elif link[1].strip() == "000":
-            album = "&album_id=saved"
-        request[0] = "photos.get?" + owner + "&" + album.strip()
-        request[1] = "photos.getAlbums?" + owner + "&album_ids=" + str(link[1].strip())
-        return request
